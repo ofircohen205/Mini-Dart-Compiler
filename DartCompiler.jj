@@ -1,0 +1,1649 @@
+PARSER_BEGIN(DartCompiler)
+
+class Variable {
+    public String type;
+    public String name;
+    private String value;
+    public boolean isInit;
+    public boolean isClass;
+    public java.util.HashMap<String, Variable> classAttributes;
+    public java.util.ArrayList<Variable> attributesList;
+
+
+    public Variable(String type, String name, boolean isClass) {
+        this.type = type;
+        this.name = name;
+        this.isInit = false;
+        this.isClass = isClass;
+        this.value = "null";
+
+        if(this.isClass)
+        {
+            this.classAttributes = new java.util.HashMap<String, Variable>();
+            this.attributesList = new java.util.ArrayList<Variable>();
+        }
+        else 
+        {
+            this.classAttributes = null;
+        }
+    }
+
+    public void setValue(String value)
+    {
+        this.value = value;
+        if(this.value != "null")
+            this.isInit = true;
+        else
+            this.isInit = false;
+    }
+
+    public String getValue()
+    {
+        return this.value;
+    }
+
+}
+
+public class DartCompiler {
+    public static String code = "";
+    public static String javaCodeStart = "";
+    public static String declaredClasses = "\n\t";
+    public static int counterForNumOfParams = 0;
+    public static java.util.HashMap<String, Variable> varTable = new java.util.HashMap<String, Variable>();
+    public static java.util.HashSet<String> isClassDefined = new java.util.HashSet<String>();
+    public static void main(String[] args) {
+        DartCompiler p = null;
+        java.io.FileWriter out = null;
+        java.io.File javaTarget = null;
+        
+        System.out.println("Reading from file " + args[0]);
+        try {
+            p = new DartCompiler(new java.io.FileInputStream(args[0]));
+            javaTarget = new java.io.File(args[1]);
+            out = new java.io.FileWriter(javaTarget);
+            javaCodeStart = "public class " + javaTarget.getName() + " {";
+        }
+        catch(java.io.FileNotFoundException e) {
+            System.out.println("Error in reading file");
+        }
+        catch(java.io.IOException e) {
+            System.out.println("Error in Writing");
+        }
+        
+        
+        try {
+            p.Program();
+            code = javaCodeStart + declaredClasses + "\n\tpublic static void main(String[] args){\n\t\t" + code + "\n" + "\t}" + "\n" + "}";
+            
+            out.write(code);
+            out.close();
+            System.out.println("Parsing was done successfully");
+        }
+        catch(ParseException e) {
+            System.out.println("Error in parsing");
+            System.out.println(e.getMessage());
+        }
+        catch(TokenMgrError e) {
+            System.out.println("There was an error in analyzing the code");
+            System.out.println(e.getMessage());
+        }
+        catch(java.io.IOException e) {
+            System.out.println("Error in Writing");
+        }
+    }
+
+}
+
+PARSER_END(DartCompiler)
+
+
+
+SKIP: {
+    " "
+|   "\t"
+|   "\n"
+|   "\r"
+|   <"//" (~["\n", "\r"])* ("\n" | "\r" | "\r\n")>
+}
+
+// Reserved words and operators
+TOKEN: {
+    <COMMA: ",">
+|   <COLON: ":">
+|   <SEMI_COLON: ";">
+|   <POINT: ".">
+|   <LP: "(">
+|   <RP: ")">
+|   <LC: "{">
+|   <RC: "}">
+|   <EQ: "=">
+|   <OP1: "??">
+|   <OP2: "??=">
+|   <QOUTE: "\"">
+|   <PRINT: "print">
+|   <DEC_INT: "int">
+|   <DEC_STRING: "string">
+|   <DEFINE: "define">
+|   <AS: "as">
+}   
+
+
+// Identifiers etc.
+TOKEN: {
+    <#LETTER: ["a"-"z", "A"-"Z"]>
+|   <#LOWERLETTER: ["a"-"z"]>
+|   <#UPPERLETTER: ["A"-"Z"]>
+|   <#DIGIT: ["0"-"9"]>
+|   <IDENTIFIER: <LETTER>(<LETTER> | "_" | <DIGIT>)*>
+|   <CLASSNAME: <UPPERLETTER>(<LETTER> | "_" | <DIGIT>)*>
+|   <NUM: (<DIGIT>)+>
+|   <STRING: "\""(~["\n", "\r"])* "\"">
+}
+
+
+void Program() : { String s1, s2; }
+{
+    s1 = Statement()
+    s2 = Statements()
+    <EOF>
+    {
+        code = s1 + s2;
+    }
+   
+}
+
+
+String Statements() : { String s1, s2; }
+{
+    s1 = Statement()
+    s2 = Statements()
+    {
+        return "\t\t" + s1 + s2;
+    }
+    | {} 
+    { return ""; }
+}
+
+
+String Statement() : { String res; Token id; }
+{
+    res = Declare() { return res + "\n"; }   // only declare of int and string
+    |
+    DefObj() { return ""; }    // define classname
+    |
+    res = Print() { return res + "\n"; }     // print
+    |
+    id = <IDENTIFIER>
+    {
+        counterForNumOfParams = 0;
+    }
+    res = DeclareObjOrAssign(id.image)    // declare object or assign
+    {
+        if(isClassDefined.contains(id.image))
+        {
+            String className = id.image.substring(0, 1).toUpperCase() + id.image.substring(1);
+            return className + " " + res + "\n";
+        }
+        
+        return id.image + " " + res + "\n";
+    }
+}
+
+
+String Declare(): { String res = ""; }
+{
+    (res = DecInt() | res = DecStr())
+    <SEMI_COLON>
+    {
+        if(res != "")
+        {
+            if(res.charAt(res.length()-1) == '}')
+            {
+                return res + "\n";
+            }
+            return res + ";\n";
+        }
+    }
+}
+
+String DecInt(): { String res1, res2; Token id; }
+{
+    <DEC_INT>
+    id = <IDENTIFIER>
+    {
+        if(varTable.containsKey(id.image))
+            throw new ParseException(id.image + " is already defined");
+
+        Variable var = new Variable("Integer", id.image, false);
+        varTable.put(id.image, var);
+    }
+    res1 = DecIntAssign(id.image)
+    res2 = MoreIdentifierInt("Integer")
+    {
+        return "Integer " + id.image + res1 + res2; 
+    }
+}
+
+String DecStr(): { String res1, res2; Token id; }
+{
+    <DEC_STRING>
+    id = <IDENTIFIER>
+    {
+        if(varTable.containsKey(id.image))
+            throw new ParseException(id.image + " is already defined");
+
+        Variable var = new Variable("String", id.image, false);
+        varTable.put(id.image, var);
+    }
+    res1 = DecStringAssign(id.image)
+    res2 = MoreIdentifierString("String")
+    {
+        return "String " + id.image + res1 + res2; 
+    }   
+}
+
+String DecIntAssign(String identifier): { String op, valInt, innerVal, opQmInt, type; Token id; }
+{
+    op = OpAssign(identifier)
+
+    // opAssign() ValueInt() for example int x = 5; int y = 8;
+    (( valInt = ValueInt())
+    {
+        if(op == "=")
+        {
+            if(varTable.get(identifier) == null)
+                throw new ParseException(identifier + " is not declared");
+
+            Variable currVar = varTable.get(identifier);
+
+            if(!currVar.isInit)
+            {
+                currVar.setValue(valInt);
+            }
+
+            return " = " + valInt;
+        }
+        else if(op == "??=")
+        {
+            // check if identifier is null
+            if(varTable.get(identifier) == null)
+                throw new ParseException(identifier + " is not declared");
+
+            Variable currVar = varTable.get(identifier);
+
+            if(!currVar.isInit)
+            {
+                currVar.setValue(valInt);
+            }
+
+            return ";\n\t\tif(" + identifier + " == null){\n\t\t\t" + identifier + " = " + valInt + ";\n\t\t}"; 
+        }
+    } 
+
+    |
+    // opAssign() <IDENTIFIER> innerValue() (OpQMInt() { return } | {}  { return }) 
+    // for example int x = y; int z = h ?? 5; int x = p.x;
+    (
+        id = <IDENTIFIER>
+        {
+            type = varTable.get(id.image).type;
+        }
+        innerVal =  innerValue(type, id.image) 
+        (
+            (opQmInt =  OpQMInt(id.image, identifier)
+            {
+                if(op == "=")
+                {
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+
+                    return " = " + id.image + innerVal + " " + opQmInt;
+                }
+                else if(op == "??=")
+                {
+                    // check if identifier is null
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+                    
+                    return ";\n\t\tif(" + identifier + " == null){\n\t\t\t" + identifier + " = " + idVar.getValue() + ";\n\t\t}"; 
+                } 
+            } 
+            
+            | 
+            
+            {} 
+            {
+                if(op == "=")
+                {
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+
+                    return "= " + id.image + innerVal;
+                }
+                else if(op == "??=")
+                {
+                    // check if identifier is null
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+                    
+                    return ";\n\t\tif(" + identifier + " == null){\n\t\t\t" + identifier + " = " + idVar.getValue() + ";\n\t\t}";
+                } 
+            })
+        )
+    )) 
+    
+    |
+
+    {} { return " = null"; }
+}
+
+
+String DecStringAssign(String identifier): { String op, valStr, innerVal, opQmStr, type; Token id; }
+{
+    op = OpAssign(identifier)
+
+    // opAssign() ValueString()
+    (( valStr = ValueString())
+    {
+        if(op == "=")
+        {
+            varTable.get(identifier).setValue(valStr);
+            return " = " + valStr;
+        }
+        else if(op == "??=")
+        {
+            // check if identifier is null
+            if(varTable.get(identifier) == null)
+                throw new ParseException(identifier + " is not declared");
+    
+            Variable currVar = varTable.get(identifier);
+
+            if(!currVar.isInit)
+            {
+                currVar.setValue(valStr);
+            }
+            return ";\n\t\tif(" + identifier + " == null){\n\t\t\t" + identifier + " = " + valStr + ";\n\t\t}"; 
+        }
+    } 
+
+    |
+    // opAssign() <IDENTIFIER> innerValue() (OpQMStr() { return } | {}  { return }) 
+    (
+        id = <IDENTIFIER>
+        {
+            type = varTable.get(id.image).type;
+        }
+        innerVal =  innerValue(type, id.image) 
+        (
+            (opQmStr =  OpQMStr(id.image)
+            {
+                if(op == "=")
+                {
+                    return " = " + id.image + innerVal + " " + opQmStr;
+                }
+                else if(op == "??=")
+                {
+                    // check if identifier is null
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+                    if(idVar.type == "Integer")
+                        throw new ParseException(id.image + " is not a string");
+
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+                    
+                    return ";\n\t\tif(" + identifier + " == null){\n\t\t\t" + identifier + " = " + idVar.getValue() + ";\n\t\t}"; 
+                }
+            } 
+            
+            | 
+            
+            {} 
+            {
+                if(op == "=")
+                {
+                    String res = id.image;
+
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+                
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+                    if(idVar.type == "Integer")
+                        throw new ParseException(id.image + " is not a string");
+
+                    if(idVar.type != "Integer" && idVar.type != "String")
+                        res += ".toString()";
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+
+                    return "= " + res + innerVal;
+                }
+                else if(op == "??=")
+                {
+                    // check if identifier is null
+                    if(varTable.get(identifier) == null)
+                        throw new ParseException(identifier + " is not declared");
+                    
+                    Variable currVar = varTable.get(identifier);
+                    Variable idVar = varTable.get(id.image);
+
+                    if(idVar == null)
+                    {
+                        throw new ParseException(id.image + " is not defined");
+                    }
+
+
+                    if(!currVar.isInit)
+                    {
+                        currVar.setValue(idVar.getValue());
+                    }
+                    
+                    return ";\n\t\tif(" + identifier + " == null){\n\t\t\t" + identifier + " = " + idVar.getValue() + ";\n\t\t}";
+                } 
+            })
+        )
+    )) 
+    
+    |
+
+    {} { return " = null"; }
+}
+
+
+String DecObjAssign(String identifier): { String op = "", valueObj = ""; }
+{
+    op = OpAssign(identifier)
+    valueObj = ValueObj(identifier)
+    {
+        if(op == "=")
+        {
+            return op + " " + valueObj;
+        }
+
+        else if(op == "??=")
+        {
+
+            String retVal = " = " + valueObj + " == null ? null : " + valueObj;
+            return retVal;
+        }
+    }
+
+    |
+
+    {} { return " = null"; }
+}
+
+
+// if from = 1 then we got here from DecIntAssign
+// if from = 2 then we got here from DecStrAssign 
+String OpAssign(String identifier): {}
+{
+    // "??=" or "="
+    <OP2> 
+    { 
+        //check if identifier is null
+        return "??=";
+    } 
+    
+    |   
+    
+    <EQ>
+    { 
+        return "=";
+    }
+}
+
+
+String ValueInt(): { Token val; }
+{
+    val = <NUM> { return val.image; }
+}
+
+
+String ValueString(): { Token val; }
+{
+    val = <STRING> { return val.image; }
+}
+
+
+// check if no attributes can be transfered - ()
+String ValueObj(String identifier): { Token id, id2; String valInt = "", valStr = "", objAttrVal = "", moreIden = "", params = "", retVal = ""; Variable v, v2, vTemp; }
+{   
+    // Point p1 = p2
+    id = <IDENTIFIER>
+    {
+        if(varTable.get(id.image) == null)
+            throw new ParseException(id.image + " is not declared");
+
+        if(varTable.get(id.image).type == "String" || varTable.get(id.image).type == "Integer")
+            throw new ParseException(id.image + " is not the same type");
+
+        Variable var = new Variable(id.image, identifier, true);
+
+        for(int i = 0; i < varTable.get(id.image).attributesList.size(); i++)
+            var.attributesList.add(varTable.get(id.image).attributesList.get(i));
+
+        return id.image;
+    }
+    |
+    // Point p1 = (1, "hello", p7.x, p);   
+    <LP>
+    {   
+        v = varTable.get(identifier);
+        vTemp = varTable.get("Class" + varTable.get(identifier).type);
+
+        for(int i = 0; i < vTemp.attributesList.size(); i++)
+        {
+            v.attributesList.add(vTemp.attributesList.get(i));
+        }
+
+        String className = varTable.get("Class" + varTable.get(identifier).type).type.substring("Class".length());
+        String realClassName = className.substring(0, 1).toUpperCase() + className.substring(1);
+
+        retVal += "new " + realClassName + "(";
+    }
+        (
+            valInt = ValueInt()
+            {
+                v = varTable.get("Class" + varTable.get(identifier).type);
+
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v.attributesList.get(counterForNumOfParams).type != "Integer")
+                    throw new ParseException("not the same type");
+                
+                
+                v.attributesList.get(counterForNumOfParams).setValue(valInt);
+                params += valInt + ", ";
+                counterForNumOfParams++;
+            }
+            |
+            valStr = ValueString()
+            {
+                v = varTable.get("Class" + varTable.get(identifier).type);
+
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+                if(v.attributesList.get(counterForNumOfParams).type != "String")
+                    throw new ParseException("not the same type");
+
+                v.attributesList.get(counterForNumOfParams).setValue(valStr);    
+                params += valStr + ", ";
+                counterForNumOfParams++;
+            }
+            |
+            id2 = <IDENTIFIER> 
+            objAttrVal = ObjAttrVal(id2.image)
+            {
+                v = varTable.get("Class" + varTable.get(identifier).type);
+                v2 = varTable.get(id2.image);
+
+                if(v2 == null)
+                    throw new ParseException(id2.image + " is not declared");
+
+                if(objAttrVal == "")
+                {
+                    if(counterForNumOfParams + 1 > v.attributesList.size())
+                        throw new ParseException("there are more params then you need");
+
+                    if(v2.type != v.attributesList.get(counterForNumOfParams).type)
+                    {
+                        throw new ParseException(id2.image + " and" + identifier + " are not the same type");
+                    }
+
+                    v.attributesList.get(counterForNumOfParams).setValue(id2.image);
+                    params += id2.image + ", ";
+                    counterForNumOfParams++;
+                }
+                else
+                {
+                    if(counterForNumOfParams + 1 > v.attributesList.size())
+                        throw new ParseException("there are more params then you need");
+
+                    if(v2.classAttributes.get(objAttrVal).type != v.attributesList.get(counterForNumOfParams).type)
+                        throw new ParseException("not the same type");
+
+                    params += id2.image + objAttrVal + ", ";
+                    counterForNumOfParams++;
+                }
+                                        
+                if(v.type != "Integer")
+                    throw new ParseException("not the same type");
+            }
+        )
+        (moreIden = MoreIdentifier(identifier))
+    <RP>
+    {
+        v = varTable.get(identifier);
+        vTemp = varTable.get("Class" + varTable.get(identifier).type);
+
+
+        if(counterForNumOfParams != vTemp.attributesList.size())
+            throw new ParseException("the number of params you've entered are not the same");
+
+        params += moreIden;
+
+        if(params.charAt(params.length() - 1) == ' ' &&  params.charAt(params.length() - 2) == ',')
+            params = params.substring(0, params.length() - 2);
+
+        retVal += params + ")";
+        return retVal; 
+    }
+}
+
+
+String MoreIdentifier(String classObj): { Token id; String attrVal = "", valInt = "", valStr = "", moreIdens = "", params = ""; Variable v, v2; }
+{
+    <COMMA>
+    (
+        id = <IDENTIFIER> 
+        attrVal = ObjAttrVal(classObj)
+        {
+            v = varTable.get("Class" + varTable.get(classObj).type);
+                v2 = varTable.get(id.image);
+
+            if(v2 == null)
+                throw new ParseException(id.image + " is not declared");
+
+            if(attrVal == "")
+            {
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v2.type != v.attributesList.get(counterForNumOfParams).type)
+                {
+                    throw new ParseException(id.image + " and" + classObj + " are not the same type");
+                }
+
+                params += id.image + ", ";
+                counterForNumOfParams++;
+            }
+            else
+            {
+                if(v2.classAttributes.get(attrVal).type != v.attributesList.get(counterForNumOfParams).type)
+                    throw new ParseException("not the same type");
+
+                params += id.image + attrVal + ", ";
+                counterForNumOfParams++;
+            }
+                                    
+            if(v.type != "Integer")
+                throw new ParseException("not the same type");
+        }
+        |
+        valInt = ValueInt()
+        {
+            v = varTable.get("Class" + varTable.get(classObj).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "Integer")
+                throw new ParseException("not the same type");
+
+            params += valInt + ", ";
+            counterForNumOfParams++; 
+        }
+        | 
+        valStr = ValueString()
+        {
+            v = varTable.get("Class" + varTable.get(classObj).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "String")
+                throw new ParseException("not the same type");
+
+            params += valStr + ", ";
+            counterForNumOfParams++;
+        }
+    )
+    moreIdens = MoreIdentifiers(classObj)
+    {
+        return params + moreIdens;
+    }
+    | {}    { return ""; }
+}
+
+
+String MoreIdentifiers(String classObj): { Token id; String attrVal = "", valInt = "", valStr = "", moreIdens = "", params = ""; Variable v, v2; }
+{
+    (<COMMA>
+    (
+        id = <IDENTIFIER>
+        attrVal = ObjAttrVal(classObj)
+        {
+            v = varTable.get("Class" + varTable.get(classObj).type);
+            v2 = varTable.get(id.image);
+
+            if(v2 == null)
+                throw new ParseException(id.image + " is not declared");
+
+            if(attrVal == "")
+            {
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v2.type != v.attributesList.get(counterForNumOfParams).type)
+                {
+                    throw new ParseException(id.image + " and" + classObj + " are not the same type");
+                }
+
+                params += id.image + ", ";
+                counterForNumOfParams++;
+            }
+            else
+            {
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v2.classAttributes.get(attrVal).type != v.attributesList.get(counterForNumOfParams).type)
+                    throw new ParseException("not the same type");
+
+                params += id.image + attrVal + ", ";
+                counterForNumOfParams++;
+            }
+                                    
+            if(v.type != "Integer")
+                throw new ParseException("not the same type");
+            }
+        |
+        valInt = ValueInt()
+        {
+            v = varTable.get("Class" + varTable.get(classObj).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "Integer")
+                throw new ParseException("not the same type");
+
+            params += valInt + ", ";
+            counterForNumOfParams++;
+        }
+        |
+        valStr = ValueString()
+        {
+            v = varTable.get("Class" + varTable.get(classObj).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+            
+            if(v.attributesList.get(counterForNumOfParams).type != "String")
+                throw new ParseException("not the same type");
+
+            params += valStr + ", ";
+            counterForNumOfParams++;
+        }
+    )
+    moreIdens = MoreIdentifiers(classObj))
+    {
+        return params + moreIdens;
+    }
+
+    |
+    {}  { return ""; } 
+}
+
+String ObjAttrVal(String classObj): { Token id; String moreVals = ""; }
+{
+    <POINT>
+    id = <IDENTIFIER>
+    moreVals = MoreObjAttrVals(classObj)
+    {
+        if(varTable.get(classObj) == null || !varTable.get(classObj).isClass)
+            throw new ParseException(classObj + " is not a class");
+
+        return "." + id.image + moreVals;
+    }
+    | {} { return ""; }
+}
+
+
+String MoreObjAttrVals(String classObj): { Token id; String moreVals = ""; }
+{
+    <POINT>
+    id = <IDENTIFIER>
+    moreVals = MoreObjAttrVals(classObj)
+    {
+        if(varTable.get(classObj) == null || !varTable.get(classObj).isClass)
+            throw new ParseException(classObj + " is not a class");
+
+        return "." + id.image + moreVals;
+    }
+    
+    |
+    {} { return ""; }    
+}
+
+
+String innerValue(String type, String ObjName): { Token id; String res; }
+{
+    <POINT>
+    id = <IDENTIFIER>
+    res = innerValues(type, ObjName)
+    {
+        if(type == "String" || type == "Integer")
+            throw new ParseException(ObjName + " is not an object");
+
+        Variable var = varTable.get(ObjName);
+
+        int j = 0;
+        for(int i = 0; i < var.attributesList.size(); i++)
+        {
+            if(var.attributesList.get(i).name.equals(id.image))
+                j++;  
+        }
+
+        if(j == var.attributesList.size())
+            throw new ParseException(id.image + " is not an attribute in the class");
+
+        return "." + id.image + " " + res;
+    }
+    
+    |   {} { return ""; }
+}
+
+
+String innerValues(String type, String ObjName): { Token id; String res; }
+{
+    <POINT>
+    id = <IDENTIFIER>
+    res = innerValues(type, ObjName) 
+    {
+        if(type == "String" || type == "Integer")
+        throw new ParseException(ObjName + " is not an object");
+
+        Variable var = varTable.get(ObjName);
+
+        if(!var.attributesList.contains(id.image))
+            throw new ParseException(id.image + " is not an attribute in the class");
+
+        return "." + id.image + " " + res;
+    }
+
+    |   {} { return ""; }
+}
+
+
+
+String MoreIdentifierInt(String type): {  Token id, id2, num; String op = "", valInt = "", moreIdenInt = "", id2ToString = "", numToString = "";  }
+{
+    <COMMA>
+    id = <IDENTIFIER>
+    (   
+        op = OpAssign(id.image)
+        (
+            valInt = ValueInt()
+            |
+            id2 = <IDENTIFIER>
+            <OP1>
+            num = <NUM>
+            {
+                id2ToString = id2.image;
+                numToString = num.image;
+            }
+        ) 
+        | 
+        {} { valInt = " null"; }
+    )
+    moreIdenInt = MoreIdentifierInt("Integer") 
+    {
+        if(varTable.containsKey(id.image))
+            throw new ParseException(id.image + " is already declared");
+
+        Variable var = new Variable("Integer", id.image, false);
+        varTable.put(id.image, var);
+
+        String retVal = ", " + id.image;
+
+        if(op == "??=")
+        {
+            if(valInt != "")
+            {
+                return retVal + " ??= " + valInt + moreIdenInt;
+            }
+            else
+            {
+                return retVal + " ??= " + id2ToString + numToString + " " + moreIdenInt;
+            }
+        }
+        else if(op == "=")
+        {
+            if(valInt != "")
+            {
+                return retVal + op + valInt + moreIdenInt;
+            }
+            else
+            {
+                return retVal + op + id2ToString + numToString + moreIdenInt;
+            }
+        }
+        else
+        {
+            return retVal + " = null" + moreIdenInt;
+        }
+    }
+    |   
+    
+    {} { return ""; }
+}
+
+
+String MoreIdentifierString(String type): {  Token id, id2, string; String op = "", valStr = "", moreIdenStr = "", id2ToString = "", stringToString = "";  }
+{
+    <COMMA>
+    id = <IDENTIFIER>
+    (   
+        op = OpAssign(id.image)
+        (
+            valStr = ValueString()
+            |
+            id2 = <IDENTIFIER>
+            <OP1>
+            string = <STRING>
+            {
+                id2ToString = id2.image;
+                stringToString = string.image;
+            }
+        ) 
+        |
+        {} { valStr = " null"; }
+    )
+    moreIdenStr = MoreIdentifierString("String") 
+    {
+        if(varTable.containsKey(id.image))
+            throw new ParseException(id.image + " is already declared");
+
+        Variable var = new Variable("String", id.image, false);
+        varTable.put(id.image, var);
+
+        String retVal = ", " + id.image;
+
+        if(op == "??=")
+        {
+            if(valStr != "")
+            {
+                return retVal + " ??= " + valStr + moreIdenStr;
+            }
+            else
+            {
+                return retVal + " ??= " + id2ToString + stringToString + moreIdenStr;
+            }
+        }
+        else if(op == "=")
+        {
+            if(valStr != "")
+            {
+                return retVal + " = " + valStr + moreIdenStr + " = null";
+            }
+            else
+            {
+                return retVal + " = " + id2ToString + stringToString + moreIdenStr;
+            }
+        }
+        else
+        {
+            return retVal + moreIdenStr;
+        }
+    }
+    |   
+    
+    {} { return ""; }
+}
+
+
+
+
+String MoreIdentifierObj(String type, String className): { Token id; String moreIdenObj = "", retVal = ""; }
+{
+    <COMMA>
+    id = <IDENTIFIER>
+    {
+        Variable var = new Variable("Class" + className, id.image, true);
+        varTable.put(id.image, var);
+    }
+    // (OpAssign() ValueString() | {})
+    moreIdenObj = MoreIdentifierObj(type, className)
+    {
+        return ", " + id.image + " = null " + moreIdenObj;
+    } 
+    
+    |
+    {} { return ""; }
+}
+
+
+
+void DefObj(): { String attributesFromFunction = ""; Token id; }
+{
+    <DEFINE>
+    id = <IDENTIFIER>
+    {
+        if(isClassDefined.contains(id.image))
+            throw new ParseException(id.image + " is already defined");
+
+        // (String type, boolean isClass)
+        Variable var = new Variable("Class" + id.image, "Class" + id.image, true);
+        varTable.put("Class" + id.image, var);
+        isClassDefined.add(id.image);
+    }
+    <AS>
+    <LC>
+    attributesFromFunction = ClassAttributes(var)
+    <RC>
+    <SEMI_COLON>
+    {
+        String className = id.image.substring(0, 1).toUpperCase() + id.image.substring(1);
+        String newClass = "class " + className + " {\n";
+        String decAttrs = "";
+        String constructor = "\t\tpublic " + className + "(";
+        String innerConstructor = "";
+        String toString = "\t\tpublic String toString(){\n\t\t\treturn \"(";
+        String classAttributes;
+        java.util.Iterator it = var.classAttributes.entrySet().iterator();
+        while (it.hasNext()) 
+        {
+            java.util.Map.Entry curr = (java.util.Map.Entry)it.next();
+            Variable currVar = (Variable)curr.getValue();
+            String key = (String)curr.getKey();
+            decAttrs += "\t\tpublic " + currVar.type + " " + key + ";\n";
+            constructor += currVar.type + " " + key + ", ";
+            innerConstructor += "\t\t\tthis." + key + " = " + key + ";\n";
+            toString += key + " =\" + " + "this." + key + " + \", ";
+        }
+
+
+        constructor = constructor.substring(0, constructor.length()-2);
+        constructor += "){\n" + innerConstructor + "\t\t}\n";
+        toString = toString.substring(0, toString.length()-2);
+        toString += ")\";\n\t\t}";
+
+        declaredClasses += newClass + decAttrs + constructor + "\n" + toString + "\n\t}\n";
+        return;
+    }
+}
+
+
+String ClassAttributes(Variable var): { Token type, identifier; String moreIden = "", moreAttributes = ""; Variable attribute; }
+{
+    (
+        type = <DEC_INT>
+        |
+        type = <DEC_STRING>
+        |
+        type = <IDENTIFIER>
+    )
+    identifier = <IDENTIFIER>
+    moreIden = MoreSameLineIdentifiers(var, type.image)
+    <SEMI_COLON>
+    {
+        if(type.image == "string")
+        {
+            type.image = "String";   
+        }
+
+        else if(type.image == "int")
+        {
+            type.image = "Integer";
+        }
+
+        if(var.classAttributes.containsKey(identifier.image))
+            throw new ParseException(identifier.image + " is already defined as an attribute in the class");
+
+
+        if(type.image == "String" || type.image == "Integer")
+        {
+            attribute = new Variable(type.image, identifier.image, false);
+            var.classAttributes.put(identifier.image, attribute);
+        }
+        else
+        {
+            attribute = new Variable(type.image, identifier.image, true);
+            var.classAttributes.put(identifier.image, attribute);
+        }
+        
+        var.attributesList.add(attribute);
+    }
+    moreAttributes = MoreClassAttributes(var)
+    {
+
+
+        String retVal = type.image + " " + identifier.image;
+        
+        if(moreIden != "")
+        {
+            retVal += " " + moreIden + ";";
+        }
+        else
+        {
+            retVal += ";";
+        }
+
+        if(moreAttributes != "")
+        {
+            retVal += "\n\t" + moreAttributes;
+        }   
+
+        return retVal + "\n";
+    }
+}
+
+
+
+String MoreSameLineIdentifiers(Variable var, String type): { Token identifier; String moreIden = ""; Variable attribute;}
+{
+    <COMMA>
+    identifier = <IDENTIFIER>
+    {
+        if(type == "string")
+        {
+            attribute = new Variable("String", identifier.image, false);
+        }
+        else if(type == "int")
+        {
+            attribute = new Variable("Integer", identifier.image, false);
+        }
+        else
+        {
+            attribute = new Variable(type, identifier.image, true);
+        }
+
+        if(var.classAttributes.containsKey(identifier.image))
+            throw new ParseException(identifier.image + " is already defined as an attribute in the class");
+
+        var.classAttributes.put(identifier.image, attribute);
+        
+        var.attributesList.add(attribute);
+    }
+    moreIden = MoreSameLineIdentifiers(var, type)
+    {
+        String retVal = ", " + identifier.image;
+
+        if(moreIden != "")
+        {
+            retVal += " " + moreIden;
+        }
+
+        return retVal;
+    }
+
+    | 
+    {} { return ""; }
+}
+
+
+String MoreClassAttributes(Variable var): { String attributes = "", moreAttributes = ""; }
+{
+    attributes = ClassAttributes(var)
+    moreAttributes = MoreClassAttributes(var)
+    {
+        return attributes + " " + moreAttributes;
+    }
+    | 
+    {} { return ""; }
+}
+
+
+String Print(): { Token printVal; String innerVal = "", type; }
+{
+    <PRINT>
+    <LP>
+    (
+        printVal = <STRING>
+        |
+        printVal = <NUM>
+        |
+        printVal = <IDENTIFIER>
+        {
+            type = varTable.get(printVal.image).type;
+        }
+        innerVal = innerValue(type, printVal.image)
+    )
+    <RP>
+    <SEMI_COLON>
+    {
+        String retVal = "System.out.println(";
+        retVal += printVal.image;
+
+        if(innerVal != "")
+        {
+            retVal += innerVal;
+        }
+
+        retVal += ");";
+
+        return retVal;
+    }
+}
+
+
+
+String DeclareObjOrAssign(String identifierOrClass): { String assign = "", decObj = ""; Token id; }
+{
+    (id = <IDENTIFIER> 
+    decObj = DecObj(id.image, identifierOrClass)
+    <SEMI_COLON>)
+    {
+        return id.image + " " + decObj + ";";
+    }
+    
+    |
+    
+    (assign = Assign(identifierOrClass)
+    <SEMI_COLON>)
+    {
+        return assign + ";\n";
+    }
+}
+
+
+String DecObj(String identifier, String type): { String decObj = "", moreIdenObj = ""; }
+{
+    {
+        if(varTable.containsKey(identifier) && (varTable.get(identifier).type == "String" || varTable.get(identifier).type == "Integer"))
+            throw new ParseException(identifier + " is already declared");
+
+        Variable var = new Variable(type, identifier, true);
+        varTable.put(identifier, var);
+    }
+    decObj = DecObjAssign(identifier)
+    moreIdenObj = MoreIdentifierObj(identifier, type)
+    {
+        return decObj + moreIdenObj; 
+    }
+}
+
+
+//TODO: check if identifier is initialized and not a class
+String Assign(String identifier): { String op = "", rightReg = "", rightObj = ""; }
+{
+    op = OpAssign(identifier)
+    (
+        rightReg = AssignRightReg(identifier)
+        | 
+        rightObj = AssignRightObj(identifier)
+    )
+    {
+        if(op == "??=")
+        {
+            // retVal = t.image + innerVal + " == null ? " + t2.image + " : " +  t.image;
+            if(rightReg != "")
+                return op + " " + rightReg;
+
+            return op + " " + rightObj;
+        }
+        else if(op == "=")
+        {
+            if(rightReg != "")
+                return op + " " + rightReg;
+
+            return op + " " + rightObj;
+        }
+    }
+}
+
+
+String AssignRightReg(String identifier): { Token t, t2; String innerVal = "", type = "", innerType = "", value = "", retVal = ""; boolean isIden = false; }
+{
+    (
+        (t = <STRING>
+        {
+            type = "String";
+            retVal = t.image;
+        })
+        |
+        (t = <NUM>
+        {
+            type = "Integer";
+            retVal = t.image;
+        })
+        |
+        (t = <IDENTIFIER>
+        {
+            if(varTable.get(t.image) == null)
+                throw new ParseException(t.image + " is not declared");
+
+            type = varTable.get(t.image).type;
+            isIden = true;
+        }
+        innerVal = innerValue(type, t.image)) 
+            
+            (<OP1>  // "?? 5 / "hello" "
+                (
+                    t2 = <NUM>
+                    {
+                        innerType = "Integer";
+                    }
+                    |
+                    t2 = <STRING>
+                    {
+                        innerType = "String";
+                    }
+                )
+            {
+                if(varTable.get(identifier) == null)
+                    throw new ParseException(identifier + " is not declared");
+
+                if(!isIden || !varTable.containsKey(t.image))
+                    throw new ParseException(t.image + " is not identifier");
+                
+                if(varTable.get(identifier).type != innerType)
+                    throw new ParseException(t.image + " is not the same type as identifier");
+
+
+                if(varTable.get(t.image).getValue() == "null")
+                    varTable.get(identifier).setValue(t2.image);
+                else
+                    varTable.get(identifier).setValue(varTable.get(t.image).getValue());
+
+                retVal = t.image + innerVal + " == null ? " + t2.image + " : " +  t.image;
+            }
+            | 
+            {})
+    )
+    {
+        if(varTable.get(identifier) == null)
+            throw new ParseException(identifier + " is not declared");
+
+        Variable var = varTable.get(identifier);
+        
+        if(var.type != type)
+            throw new ParseException(identifier + " are not the same type");
+        
+        return retVal;
+    }
+}
+
+
+String AssignRightObj(String identifier): { Token id, id2; String valInt = "", valStr = "", objAttrVal = "", moreIden = "", params = "", retVal = ""; Variable v, v2, vTemp; }
+{
+    <LP>
+    {
+        v = varTable.get(identifier);
+        vTemp = varTable.get(varTable.get(identifier).type);
+
+        for(int i = 0; i < vTemp.attributesList.size(); i++)
+        {
+            v.attributesList.add(vTemp.attributesList.get(i));
+        }
+
+        String className = varTable.get(varTable.get(identifier).type).type.substring("Class".length());
+        String realClassName = className.substring(0, 1).toUpperCase() + className.substring(1);
+
+        retVal += "new " + realClassName + "(";
+    }
+    (
+        valStr = ValueString()
+        {
+            v = varTable.get(varTable.get(identifier).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "String")
+                throw new ParseException("not the same type");
+
+            v.attributesList.get(counterForNumOfParams).setValue(valStr);    
+            params += valStr + ", ";
+            counterForNumOfParams++;
+        }
+        |
+        valInt = ValueInt()
+        {
+            v = varTable.get(varTable.get(identifier).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "Integer")
+                throw new ParseException("not the same type");
+            
+            
+            v.attributesList.get(counterForNumOfParams).setValue(valInt);
+            params += valInt + ", ";
+            counterForNumOfParams++;
+        }
+        |
+        id2 = <IDENTIFIER>
+        objAttrVal = ObjAttrVal(id2.image)
+        {
+            v = varTable.get(varTable.get(identifier).type);
+            v2 = varTable.get(id2.image);
+
+            if(v2 == null)
+                throw new ParseException(id2.image + " is not declared");
+
+            if(objAttrVal == "")
+            {
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v2.type != v.attributesList.get(counterForNumOfParams).type)
+                {
+                    throw new ParseException(id2.image + " and" + identifier + " are not the same type");
+                }
+
+                v.attributesList.get(counterForNumOfParams).setValue(id2.image);
+                params += id2.image + ", ";
+                counterForNumOfParams++;
+            }
+            else
+            {
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v2.classAttributes.get(objAttrVal).type != v.attributesList.get(counterForNumOfParams).type)
+                    throw new ParseException("not the same type");
+
+                params += id2.image + objAttrVal + ", ";
+                counterForNumOfParams++;
+            }
+                                    
+            if(v.type != "Integer")
+                throw new ParseException("not the same type");
+        }
+    )
+    moreIden = MoreAssignRightObj(identifier)
+    <RP>
+    {
+        v = varTable.get(identifier);
+        vTemp = varTable.get(varTable.get(identifier).type);
+
+
+        if(counterForNumOfParams != vTemp.attributesList.size())
+            throw new ParseException("the number of params you've entered are not the same");
+
+        params += moreIden;
+
+        if(params.charAt(params.length() - 1) == ' ' &&  params.charAt(params.length() - 2) == ',')
+            params = params.substring(0, params.length() - 2);
+
+        retVal += params + ")";
+        return retVal; 
+    }
+}
+
+
+String MoreAssignRightObj(String classObj): { Token id; String attrVal = "", valInt = "", valStr = "", moreVals = "", params = ""; Variable v, v2; }
+{
+    <COMMA>
+    (
+        valStr = ValueString()
+        {
+            v = varTable.get(varTable.get(classObj).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "String")
+                throw new ParseException("not the same type");
+
+            params += valStr + ", ";
+            counterForNumOfParams++;
+        }
+        |
+        valInt = ValueInt()
+        {
+            v = varTable.get(varTable.get(classObj).type);
+
+            if(counterForNumOfParams + 1 > v.attributesList.size())
+                throw new ParseException("there are more params then you need");
+
+            if(v.attributesList.get(counterForNumOfParams).type != "Integer")
+                throw new ParseException("not the same type");
+
+            params += valInt + ", ";
+            counterForNumOfParams++;
+        }
+        |
+        id = <IDENTIFIER>
+        moreVals = ObjAttrVal(id.image)
+        {
+            v = varTable.get(varTable.get(classObj).type);
+                v2 = varTable.get(id.image);
+
+            if(v2 == null)
+                throw new ParseException(id.image + " is not declared");
+
+            if(attrVal == "")
+            {
+                if(counterForNumOfParams + 1 > v.attributesList.size())
+                    throw new ParseException("there are more params then you need");
+
+                if(v2.type != v.attributesList.get(counterForNumOfParams).type)
+                {
+                    throw new ParseException(id.image + " and" + classObj + " are not the same type");
+                }
+
+                params += id.image + ", ";
+                counterForNumOfParams++;
+            }
+            else
+            {
+                if(v2.classAttributes.get(attrVal).type != v.attributesList.get(counterForNumOfParams).type)
+                    throw new ParseException("not the same type");
+
+                params += id.image + attrVal + ", ";
+                counterForNumOfParams++;
+            }
+                                    
+            if(v.type != "Integer")
+                throw new ParseException("not the same type");
+        }
+    )
+    moreVals = MoreAssignRightObj(classObj)
+    {
+        return params + moreVals;
+    }
+    | 
+    
+    {} { return ""; }
+}
+
+
+
+String OpQMInt(String identifier, String initId): { Token op1, val; }
+{
+    op1 = <OP1>
+    val = <NUM>
+    {
+        if(varTable.get(identifier).getValue() == "null")
+            varTable.get(initId).setValue(val.image);
+
+        return " == null ?" + val.image + " : " + identifier; 
+        // return op1.image + " " + val.image;
+    }
+}
+
+
+String OpQMStr(String identifier): { Token op1, val; }
+{
+    op1 = <OP1>
+    val = <STRING>
+    {
+        return " == null ?" + val.image + " : " + identifier; 
+        // return op1.image + " " + val.image;
+    }
+}

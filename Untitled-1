@@ -1,0 +1,600 @@
+PARSER_BEGIN(DartCompiler)
+
+// class Variable {
+//     public String type;
+//     public String name;
+//     private String value;
+//     public boolean isInit;
+//     public boolean isClass;
+//     private java.util.HashMap<String, Variable> classAttributes;
+
+
+//     public Variable(String type, String name, boolean isClass) {
+//         this.type = type;
+//         this.name = name;
+//         this.isInit = false;
+//         this.isClass = isClass;
+//         this.value = "null";
+
+//         if(this.isClass)
+//         {
+//             this.classAttributes = new java.util.HashMap<String, Variable>();
+//         }
+//     }
+
+//     public void setValue(String value)
+//     {
+//         this.value = value;
+//         this.isInit = true;
+//     }
+
+//     public String getValue()
+//     {
+//         return this.value;
+//     }
+
+// }
+
+public class DartCompiler {
+    public static String code = "";
+    public static String javaCodeStart = "";
+    public static String declaredClasses = "";
+    // public static java.util.HashSet<Variable> varTable = new java.util.HashSet<Variable>();
+    public static void main(String[] args) {
+        DartCompiler p = null;
+        java.io.FileWriter out = null;
+        java.io.File javaTarget = null;
+        
+        System.out.println("Reading from file " + args[0]);
+        try {
+            p = new DartCompiler(new java.io.FileInputStream(args[0]));
+            javaTarget = new java.io.File(args[1]);
+            out = new java.io.FileWriter(javaTarget);
+            javaCodeStart = "public class " + javaTarget.getName() + "{";
+        }
+        catch(java.io.FileNotFoundException e) {
+            System.out.println("Error in reading file");
+        }
+        catch(java.io.IOException e) {
+            System.out.println("Error in Writing");
+        }
+        
+        
+        try {
+            p.Program();
+            code = javaCodeStart + declaredClasses + "\npublic static void main(String[] args){\n" + code + "\n" + "}" + "\n" + "}";
+            
+            out.write(code);
+            out.close();
+            System.out.println("Parsing was done successfully");
+        }
+        catch(ParseException e) {
+            System.out.println("Error in parsing");
+            System.out.println(e.getMessage());
+        }
+        catch(TokenMgrError e) {
+            System.out.println("There was an error in analyzing the code");
+            System.out.println(e.getMessage());
+        }
+        catch(java.io.IOException e) {
+            System.out.println("Error in Writing");
+        }
+    }
+
+}
+
+PARSER_END(DartCompiler)
+
+
+
+SKIP: {
+    " "
+|   "\t"
+|   "\n"
+|   "\r"
+|   <"//" (~["\n", "\r"])* ("\n" | "\r" | "\r\n")>
+}
+
+// Reserved words and operators
+TOKEN: {
+    <COMMA: ",">
+|   <COLON: ":">
+|   <SEMI_COLON: ";">
+|   <POINT: ".">
+|   <LP: "(">
+|   <RP: ")">
+|   <LC: "{">
+|   <RC: "}">
+|   <EQ: "=">
+|   <OP1: "??">
+|   <OP2: "??=">
+|   <QOUTE: "\"">
+|   <PRINT: "print">
+|   <DEC_INT: "int">
+|   <DEC_STRING: "string">
+|   <DEFINE: "define">
+|   <AS: "as">
+}   
+
+
+// Identifiers etc.
+TOKEN: {
+    <#LETTER: ["a"-"z", "A"-"Z"]>
+|   <#LOWERLETTER: ["a"-"z"]>
+|   <#UPPERLETTER: ["A"-"Z"]>
+|   <#DIGIT: ["0"-"9"]>
+|   <IDENTIFIER: <LETTER>(<LETTER> | "_" | <DIGIT>)*>
+|   <CLASSNAME: <UPPERLETTER>(<LETTER> | "_" | <DIGIT>)*>
+|   <NUM: (<DIGIT>)+>
+|   <STRING: "\""(~["\n", "\r"])* "\"">
+}
+
+
+void Program() : { String s1, s2; }
+{
+    Statement()
+    Statements()
+    <EOF>
+    {
+        // code = s1 + s2;
+    }
+   
+}
+
+
+void Statements() : { String s1, s2; }
+{
+    Statement()
+    Statements()
+    // {
+    //     return s1 + s2;
+    // }
+    | {} 
+    // { return ""; }
+}
+
+
+void Statement() : { String res; Token id; }
+{
+    Declare()
+    |
+    DefObj()
+    |
+    Print() 
+    |
+    <IDENTIFIER>
+    DeclareObjOrAssign()
+    // { return id.image + " " + res; }
+}
+
+
+void Declare(): {}
+{
+    ( DecInt() | DecStr())
+
+    <SEMI_COLON>
+}
+
+void DecInt(): {}
+{
+    <DEC_INT>
+    <IDENTIFIER>
+    DecIntAssign()
+    MoreIdentifierInt()
+}
+
+void DecStr(): {}
+{
+    <DEC_STRING>
+    <IDENTIFIER>
+    DecStringAssign()
+    MoreIdentifierString()   
+}
+
+void DecIntAssign(): {}
+{
+    OpAssign()
+    (ValueInt() | <IDENTIFIER> innerValue() (OpQMInt() | {})) 
+    |   
+    {}
+}
+
+
+void DecStringAssign(): {}
+{
+    OpAssign()
+    (ValueString() | <IDENTIFIER> innerValue() (OpQMStr() | {}))
+    |   
+    {}
+}
+
+
+void DecObjAssign(): {}
+{
+    OpAssign()
+    ValueObj()
+    |   
+    {}
+}
+
+
+String OpAssign(): {}
+{
+    // "??=" or "="
+    <OP2> { return "??="; } 
+    |   
+    <EQ> { return "="; }
+}
+
+
+String ValueInt(): { Token num; }
+{
+    num = <NUM> { return num.image; }
+}
+
+
+String ValueString(): { Token string; }
+{
+    string = <STRING> { return string.image; }
+}
+
+
+// check if no attributes can be transfered - ()
+void ValueObj(): {}
+{
+    <IDENTIFIER>
+    |   
+    <LP>
+        (ValueInt() | ValueString() | <IDENTIFIER> ObjAttrVal())
+        (MoreIdentifier())
+    <RP>
+}
+
+
+void MoreIdentifier(): {}
+{
+    <COMMA>
+    (<IDENTIFIER> ObjAttrVal() | ValueInt() | ValueString())
+    MoreIdentifiers()
+
+    | {}
+}
+
+
+void MoreIdentifiers(): {}
+{
+    (<COMMA>
+    (<IDENTIFIER> ObjAttrVal() | ValueInt() | ValueString())
+    MoreIdentifiers())
+
+    | {}
+}
+
+void ObjAttrVal(): {}
+{
+    <POINT>
+    <IDENTIFIER>
+    MoreObjAttrVals()
+
+    | {}
+}
+
+
+void MoreObjAttrVals(): {}
+{
+    <POINT>
+    <IDENTIFIER>
+    MoreObjAttrVals()
+    
+    |   {}    
+}
+
+
+void innerValue(): {}
+{
+    <POINT>
+    <IDENTIFIER>
+    innerValues()
+    
+    |   {}
+}
+
+
+void innerValues(): {}
+{
+    <POINT>
+    <IDENTIFIER>
+    innerValues() 
+    
+    |   {}
+}
+
+
+
+void MoreIdentifierInt(): {}
+{
+    <COMMA>
+    <IDENTIFIER>
+    (OpAssign() (ValueInt() | <IDENTIFIER> <OP1> <NUM>) | {})
+    MoreIdentifierInt() 
+    
+    |   {}
+}
+
+void MoreIdentifierString(): {}
+{
+    <COMMA>
+    <IDENTIFIER>
+    (OpAssign() (ValueString() | <IDENTIFIER> <OP1> <STRING>) | {})
+    MoreIdentifierString() 
+    
+    |   {}
+}
+
+
+void MoreIdentifierObj(): {}
+{
+    <COMMA>
+    <IDENTIFIER>
+    // (OpAssign() ValueString() | {})
+    MoreIdentifierObj() 
+    
+    |   {}
+}
+
+
+
+void DefObj(): {}
+{
+    <DEFINE>
+    <IDENTIFIER>
+    <AS>
+    <LC>
+    ClassAttributes()
+    <RC>
+    <SEMI_COLON>
+}
+
+
+void ClassAttributes(): {}
+{
+    (<DEC_INT> | <DEC_STRING> | <IDENTIFIER>) <IDENTIFIER>
+    MoreSameLineIdentifiers()
+    <SEMI_COLON>
+    MoreClassAttributes()
+}
+
+
+
+void MoreSameLineIdentifiers(): {}
+{
+    <COMMA>
+    <IDENTIFIER>
+    MoreSameLineIdentifiers()
+
+    | {}
+}
+
+
+void MoreClassAttributes(): {}
+{
+    ClassAttributes()
+    MoreClassAttributes()
+
+    | {}
+}
+
+
+void Print(): {}
+{
+    <PRINT>
+    <LP>
+    (<STRING> | <NUM> | <IDENTIFIER> innerValue())
+    <RP>
+    <SEMI_COLON>
+}
+
+
+
+void DeclareObjOrAssign(): {}
+{
+    <IDENTIFIER> DecObj() <SEMI_COLON>
+    |
+    Assign() <SEMI_COLON>
+}
+
+
+void DecObj(): {}
+{
+    DecObjAssign()
+    MoreIdentifierObj()
+}
+
+
+//TODO: check if identifier is initialized and not a class
+void Assign(): {}
+{
+    OpAssign()
+    ( AssignRightReg() | AssignRightObj())
+}
+
+
+void AssignRightReg(): {}
+{
+    (<STRING> | <NUM> | <IDENTIFIER> innerValue() (<OP1> (<NUM> | <STRING>) | {}) ) 
+}
+
+
+void AssignRightObj(): {}
+{
+    <LP>
+    (<STRING> | <NUM> | <IDENTIFIER> innerValue())
+    MoreAssignRightObj()
+    <RP>
+
+}
+
+
+void MoreAssignRightObj(): {}
+{
+    <COMMA>
+    (<STRING> | <NUM> | <IDENTIFIER> innerValue())
+    MoreAssignRightObj()
+
+    | {}
+}
+
+
+
+String OpQMInt(): { Token id; }
+{
+    <OP1>
+    id = <NUM>
+    {
+        return "?? " + id.image;
+    }
+}
+
+
+String OpQMStr(): { Token id; }
+{
+    <OP1>
+    id = <STRING>
+    {
+        return "?? " + id.image;
+    }
+}
+
+
+
+// void Program() : {String s1, s2;}
+// {
+//     s1 = Statement()
+//     s2 = Statements()
+//     <EOF>
+//     {   String vars = "";
+//         for(java.util.Iterator<String> it = symtable.iterator(); it.hasNext();) 
+//             vars += "\ndouble " + it.next() + ";";
+//         code = vars + s1 + s2;
+//     }
+// }
+
+
+
+// String Statement() : {String res;}
+// {
+//     res = Assign()
+//     {return res; }
+// |   res = Print()
+//     {return res; }
+// |   res = For()
+//     {return res; }
+// }
+
+// String Statements() : {String s1, s2;}
+// {
+//     s1 = Statement()
+//     s2 = Statements()
+//     {return s1 + s2; }
+// |   {}  {return "";}
+// }
+
+// String Assign() : {Token t;
+//                  String exp; }
+// {
+//     t = <IDENTIFIER>    
+//     <EQUAL>
+//     exp = E()       {
+//                             if(!symtable.contains(t.image))
+//                                 symtable.add(t.image);
+//                             return "\n" + t.image + " = " + 
+//                                                 exp + ";"; 
+//                     }
+// }
+
+/*
+String E() : {String t1, t2;}
+{
+    t1 = Term()
+    t2 = EPrime()
+    {return t1 + t2; }
+}
+
+String EPrime() : {String t1, t2;}
+{
+    <PLUS>
+    t1 = Term()
+    t2 = EPrime()   {return " + " + t1 + t2; }
+|   <MINUS>
+    t1 = Term()
+    t2 = EPrime()   {return " - " + t1 + t2; }
+|   {}              {return ""; }
+}
+
+String Term() : {String t1, t2;}
+{
+    t1 = Factor()
+    t2 = TermPrime()
+    { return t1 + t2; }
+}
+
+String TermPrime() : {String t1, t2;}
+{
+    <MULT>
+    t1 = Factor()
+    t2 = TermPrime()    {return " * " + t1 + t2; }
+|   <DIV>
+    t1 = Factor()
+    t2 = TermPrime()    {return " / " + t1 + t2; }
+|   {}                  {return ""; }
+}
+
+String Factor() : {String res;
+                    Token t;}
+{
+    <LB>
+    res = E()
+    <RB>                { return "(" + res + ")"; }
+|   t = <NUMBER>        { return t.image; }
+|   t = <IDENTIFIER>    { return t.image; }
+}
+
+String Print() : { String res = "", args = "";} 
+{
+    <PRINT>     { res = "\nSystem.out.println(";}
+    args = Args()    { res = res + args + ");";}
+    {return res;}
+}
+
+String Args() : { Token t;} 
+{
+    t = <STRING>    { return t.image; }
+|   t = <NUMBER>    { return t.image; }
+|   t = <IDENTIFIER>    { if(!symtable.contains(t.image))
+                            throw new ParseException(t.image + " undefined");
+                          return t.image; 
+                        }
+}
+
+String For() :    {Token t1, t2;
+                 String exp, body;   
+                }
+{
+    <FOR> 
+    t1 = <IDENTIFIER>
+    <EQUAL>
+    t2 = <NUMBER>
+    <COMMA>
+    exp = E()
+    <COLON>
+    body = Statements()
+    <ENDBLOCK>
+    {
+        String res =  "\nfor(double " + t1.image + " = " + t2.image + "; " 
+                        + t1.image + " <= " + exp + "; " + 
+                        t1.image + "++) {" + body + "\n}";
+        return res;
+    }
+}
+
+*/

@@ -1,0 +1,658 @@
+PARSER_BEGIN(DartCompiler)
+
+// class Variable {
+//     public String type;
+//     public String name;
+//     private String value;
+//     public boolean isInit;
+//     public boolean isClass;
+//     private java.util.HashMap<String, Attribute> classAttributes;
+
+//     public Variable()
+//     {
+
+//     }
+
+//     public Variable(String type, String name, boolean isClass) {
+//         this.type = type;
+//         this.name = name;
+//         this.isInit = false;
+//         this.isClass = isClass;
+//         this.value = "null";
+
+//         if(this.isClass)
+//         {
+//             this.classAttributes = new java.util.HashMap<String, Variable>();
+//         }
+//     }
+
+//     public void setValue(String value)
+//     {
+//         this.value = value;
+//         this.isInit = true;
+//     }
+
+//     public String getValue()
+//     {
+//         return this.value;
+//     }
+
+// }
+
+
+// class Attribute {
+//     public String type;
+//     private String value;
+//     public boolean isInit;
+
+//     public Attribute(String type)
+//     {
+//         this.type = type;
+//         this.value = "null";
+//         this.isInit = false;
+//     }
+
+//     public void setValue(String value)
+//     {
+//         this.value = value;
+//         this.isInit = true;
+//     }
+
+//     public String getValue()
+//     {
+//         return this.value;
+//     }
+// }
+
+public class DartCompiler {
+    public static String code = "";
+    public static String classes = "";
+    public static String javaCodeStart = "";
+    // public static Variable = new Variable();
+    // public static java.util.HashSet<String> definedClasses = new java.util.HashSet<String>();
+    // public static java.util.HashMap<String, Integer> intTable = new java.util.HashMap<String, Integer>();
+    // public static java.util.HashMap<String, String> stringTable = new java.util.HashMap<String, String>();
+    // public static java.util.HashMap<String, java.util.HashMap<String, java.util.HashMap<String, E>>> classTable = new java.util.HashMap<String, java.util.HashMap<String, E>>();
+
+    public static String main(String[] args) {
+        DartCompiler p = null;
+        java.io.FileWriter out = null;
+        java.io.File javaTarget = null;
+        
+        System.out.println("Reading from file " + args[0]);
+        try {
+            p = new DartCompiler(new java.io.FileInputStream(args[0]));
+            javaTarget = new java.io.File(args[1]);
+            out = new java.io.FileWriter(javaTarget);
+            javaCodeStart = "public class " + javaTarget.getName() + "{";
+        }
+        catch(java.io.FileNotFoundException e) {
+            System.out.println("Error in reading file");
+        }
+        catch(java.io.IOException e) {
+            System.out.println("Error in Writing");
+        }
+        
+        
+        try {
+            p.Program();
+            javaCodeStart += classes + "\npublic static String main(String[] args){\n";
+            code = javaCodeStart + code + "\n" + "}" + "\n" + "}";
+            
+            out.write(code);
+            out.close();
+            System.out.println("Parsing was done successfully");
+        }
+        catch(ParseException e) {
+            System.out.println("Error in parsing");
+            System.out.println(e.getMessage());
+        }
+        catch(TokenMgrError e) {
+            System.out.println("There was an error in analyzing the code");
+            System.out.println(e.getMessage());
+        }
+        catch(java.io.IOException e) {
+            System.out.println("Error in Writing");
+        }
+    }
+
+}
+
+PARSER_END(DartCompiler)
+
+
+
+SKIP: {
+    " "
+|   "\t"
+|   "\n"
+|   "\r"
+|   <"//" (~["\n", "\r"])* ("\n" | "\r" | "\r\n")>
+}
+
+// Reserved words and operators
+TOKEN: {
+    <COMMA: ",">
+|   <COLON: ":">
+|   <SEMI_COLON: ";">
+|   <POINT: ".">
+|   <LP: "(">
+|   <RP: ")">
+|   <LC: "{">
+|   <RC: "}">
+|   <EQ: "=">
+|   <OP1: "??">
+|   <OP2: "??=">
+|   <QOUTE: "\"">
+|   <PRINT: "print">
+|   <DEC_INT: "int">
+|   <DEC_STRING: "string">
+|   <DEFINE: "define">
+|   <AS: "as">
+}   
+
+// Identifiers etc.
+TOKEN: {
+    <#LETTER: ["a"-"z", "A"-"Z"]>
+|   <#LOWERLETTER: ["a"-"z"]>
+|   <#UPPERLETTER: ["A"-"Z"]>
+|   <#DIGIT: ["0"-"9"]>
+|   <IDENTIFIER: <LETTER>(<LETTER> | "_" | <DIGIT>)*>
+|   <CLASSNAME: <UPPERLETTER>(<LETTER> | "_" | <DIGIT>)*>
+|   <NUM: (<DIGIT>)+>
+|   <STRING: "\""(~["\n", "\r"])* "\"">
+}
+
+
+void Program() : { String s1, s2; }
+{
+    Statement()
+    Statements()
+    <EOF>
+    // {
+    //     // code = s1 + s2;
+    // }
+   
+}
+
+
+void Statements() : { String s1, s2; }
+{
+    Statement()
+    Statements()
+    // {
+    //     // return s1 + s2;
+    // }
+    | {} 
+    // { return ""; }
+}
+
+
+void Statement() : { String res; }
+{
+    //     res = Assign() { return res; }
+    // |   res = Declare() { return res; }   
+    // |   res = DefObj() { return res; }
+    // |   res = Print() { return res; }
+
+    Declare()
+}
+
+
+void Declare(): {}
+{
+    // ( DecInt() | DecStr() | DecObj() ) <SEMI_COLON>
+    DecInt() <SEMI_COLON>
+}
+
+void DecInt(): {}
+{
+    <DEC_INT>  <IDENTIFIER> DecIntAssign() MoreIdentifier()
+}
+
+// void DecStr(): {}
+// {
+//     <DEC_STRING> <IDENTIFIER> DecStringAssign() MoreIdentifier()   
+// }
+
+// void DecObj(): {}
+// {
+//     <IDENTIFIER> <IDENTIFIER> DecObjAssign() MoreIdentifier()
+// }
+
+void DecIntAssign(): {}
+{
+    (( OpAssign() ValueInt() ) | {})
+}
+
+
+void OpAssign(): {}
+{
+    // "??=" or "="
+    <OP2> | <EQ>
+}
+
+
+void ValueInt(): {}
+{
+    <NUM> | <IDENTIFIER>
+}
+
+void MoreIdentifier(): {}
+{
+    <COMMA> <IDENTIFIER> MoreIdentifier() | {}
+}
+
+// void ValueString(): {}
+// {
+//     <STRING> | <IDENTIFIER>
+// }
+
+
+// void ValueObj(): {}
+// {
+//     <IDENTIFIER> | <LP> ValueAssign() MoreValuesAssign() <RP>
+// }
+
+
+// void ValueAssign(): {}
+// {
+//     <NUM> | <STRING> | ( <IDENTIFIER> ( <POINT> <IDENTIFIER> | {} ) )
+// }
+
+// void MoreValuesAssign(): {}
+// {
+//     <COMMA> ValueAssign() MoreValuesAssign() | {}
+// }
+
+
+// String Declare(): { String left, right;}
+// {
+//     left = Left() 
+//     right = Right()
+//     <SEMI_COLON>
+//     {
+//         return left + " " + right + ";";
+//     }
+// }
+
+// String Left(): { String type, right, moreIden; Token id; }
+// {
+//     type = Type() 
+//     id = <IDENTIFIER> 
+//     right = Right()
+//     moreIden = MoreIdentifier()
+//     {
+//         if(type == "int") 
+//         {
+//             if(!intTable.containsKey(id.image))
+//                 intTable.put(id.image, null);
+            
+//             else
+//                 throw new ParseException(id.image " is defined already");
+//         }
+//         else if(type == "String")
+//         {
+//             if(!stringTable.containsKey(id.image))
+//                 stringTable.put(id.image, "null");
+            
+//             else
+//                 throw new ParseException(id.image " is defined already");
+//         }
+//         else
+//         {
+//             if(!classTable.containsKey(id.image))
+//                 throw new ParseException(id.image " class is not defined");
+
+//             else
+//                 throw new ParseException(id.image " is defined already");
+//         }
+
+//         return type + " " + id.image + " " + right + " " + moreIden;
+
+//         // if(right == "" && moreIden == "")
+//         //     return type + " " + id.image;
+
+//         // else if(right != "" && moreIden == "")
+//         //     return type + " " + id.image + right;
+
+//         // else if(right == "" && moreIden != "")
+//         //     return type + " " + id.image + moreIden;
+
+//         // else
+//         //     return type + " " + id.image + right + moreIden;
+//     }
+// }
+
+
+// String Type(): { Token type; }
+// {
+//       type = <DEC_INT> { return type.image; }
+    
+//     | type = <DEC_STRING> { return "String"; }
+    
+//     | type = <CLASSNAME> { return type.image; }  // class name
+// }
+
+
+// String Right(): { String res1, res2; }
+// {
+//     (res1 = EqOperators()
+//     (res2 = RegRight() | res2 = ObjRight()) )
+//     { 
+//         return res1 + res2;
+//     }
+    
+//     | {} { return ""; }
+// }
+
+
+// String RegRight(): { String res; }
+// {
+//     res = Value()
+//     {
+//         return res;
+//     } 
+// }
+
+
+// String Value(): { Token id, num, string; String res1 = "", res2 = ""; }
+// {
+//     id = <IDENTIFIER>
+//     (res1 = ValueObj() | {} )
+//     (res2 =  Op2QM() | {})
+//     {
+//         return id + res1 + " " + res2;
+//     }
+
+//     | num = <NUM> { return num.image; }
+    
+//     | string = <STRING> { return string.image; }
+// }
+
+
+// String ObjRight(): { String res1, res2; }
+// {
+//     <LP>
+//     res1 = Value()
+//     res2 = MoreValues()
+//     <RP>
+//     { 
+//         return "(" + res1 + res2 + ")";
+//     }
+// }
+
+// String MoreIdentifier(): { Token id; String moreIden; }
+// {
+//     <COMMA>
+//     id = <IDENTIFIER>
+//     moreIden =  MoreIdentifier()
+//     {
+//         return ", " + id.image + moreIden;
+//     }
+    
+//     | {} { return ""; }
+// }
+
+// void DefObj(): { String res; Token t; }
+// {
+//     <DEFINE>
+//     t = <IDENTIFIER>
+//     <AS>
+//     <LC>
+//     res = ClassAttr()
+//     <RC>
+//     <SEMI_COLON>
+//     {
+//         if(definedClasses.contains(t.image))
+//             throw new ParseException(t.image + " class is already defined");
+
+
+//         String newClass = "class " + t.image + " {\n";
+//         newClass += res + "\n";
+        
+//         String newClassConstructor = "public " + t.image + "(){\n}";
+
+//         String newClassToString = "public String toString(){\n}";
+
+//         newClass += newClassConstructor + "\n" + newClassToString + "}";
+
+//         classes += newClass + "\n";
+//     }
+// }
+
+// String ClassAttr(): { String attr, attrs;}
+// {
+//     attr = Attr()
+//     attrs = Attrs()
+//     {
+//         return attr + " " + attrs;
+//     }
+// }
+
+
+// String Attr(): { String type, moreIden; Token id; }
+// {
+//     type = Type()
+//     id = <IDENTIFIER>
+//     moreIden = MoreIdentifier()
+//     <SEMI_COLON>
+//     {
+//         return type + " " + id.image + moreIden + ";";
+//     }
+// }
+
+
+// String Attrs(): { String attr, attrs; }
+// {
+//     attr = Attr()
+//     attrs = Attrs()
+//     {
+//         return attr + attrs;
+//     }
+    
+//     | {} { return ""; }
+// }
+
+
+// String Print(): { String value; }
+// {
+//     <PRINT>
+//     <LP> 
+//     value = Value()
+//     <RP> 
+//     <SEMI_COLON>
+//     {
+//         return "\nSystem.out.println(" + value + ");\n";
+//     }
+// }
+
+
+// String ValueObj(): { Token id; }
+// {
+//     <POINT>
+//     id = <IDENTIFIER>
+//     {
+//         return "." + id.image;
+//     }
+// }
+
+
+// String MoreValues(): { String value, moreValue; }
+// {
+//     <COMMA>
+//     value = Value()
+//     moreValue = MoreValues()
+//     { 
+//         return ", " + value + moreValue;
+//     }
+    
+//     | {} { return ""; }
+// }
+
+
+// String Assign(): { Token id; String res1 = "", res2; }
+// {
+//     id = <IDENTIFIER>
+//     ( res1 =  ValueObj() | {} )
+//     res2 = AssignRight()
+//     <SEMI_COLON>
+//     {
+//         return id.image + " " + res1 + " " + res2 + ";\n";
+//     }
+// }
+
+// String AssignRight(): { String eqOp, assign; }
+// {
+//     eqOp = EqOperators() (assign = RegAssign() | assign = ObjAssign())
+//     {
+//         return eqOp + " " + assign;
+//     }
+// }
+
+// String RegAssign(): { String value; }
+// {
+//     value = Value()
+//     { 
+//         return value;
+//     }
+// }
+
+// String ObjAssign(): { String value, moreValue; }
+// {
+//     <LP>
+//     value = Value()
+//     moreValue = MoreValues()
+//     <RP>
+//     {
+//         return "(" + value + " " + moreValue + ")\n";
+//     }
+// }
+
+// String EqOperators(): { String res; }
+// {
+//     <EQ>
+//     { 
+//         return "=";
+//     }
+    
+//     | res = OpEQ2QM() { return res; }
+// }
+
+// String OpEQ2QM(): {}
+// {
+//     <TWO_QM> <EQ>
+//     {
+//         return "??=";
+//     }
+// }
+
+
+// String Op2QM(): { String value; }
+// {
+//     <TWO_QM>
+//     value = Value()
+//     {
+//         return "?? " + value;
+//     }
+// }
+
+// String Assign() : {Token t;
+//                  String exp; }
+// {
+//     t = <IDENTIFIER>    
+//     <EQUAL>
+//     exp = E()       {
+//                             if(!symtable.contains(t.image))
+//                                 symtable.add(t.image);
+//                             return "\n" + t.image + " = " + 
+//                                                 exp + ";"; 
+//                     }
+// }
+
+/*
+String E() : {String t1, t2;}
+{
+    t1 = Term()
+    t2 = EPrime()
+    {return t1 + t2; }
+}
+
+String EPrime() : {String t1, t2;}
+{
+    <PLUS>
+    t1 = Term()
+    t2 = EPrime()   {return " + " + t1 + t2; }
+|   <MINUS>
+    t1 = Term()
+    t2 = EPrime()   {return " - " + t1 + t2; }
+|   {}              {return ""; }
+}
+
+String Term() : {String t1, t2;}
+{
+    t1 = Factor()
+    t2 = TermPrime()
+    { return t1 + t2; }
+}
+
+String TermPrime() : {String t1, t2;}
+{
+    <MULT>
+    t1 = Factor()
+    t2 = TermPrime()    {return " * " + t1 + t2; }
+|   <DIV>
+    t1 = Factor()
+    t2 = TermPrime()    {return " / " + t1 + t2; }
+|   {}                  {return ""; }
+}
+
+String Factor() : {String res;
+                    Token t;}
+{
+    <LB>
+    res = E()
+    <RB>                { return "(" + res + ")"; }
+|   t = <NUMBER>        { return t.image; }
+|   t = <IDENTIFIER>    { return t.image; }
+}
+
+String Print() : { String res = "", args = "";} 
+{
+    <PRINT>     { res = "\nSystem.out.println(";}
+    args = Args()    { res = res + args + ");";}
+    {return res;}
+}
+
+String Args() : { Token t;} 
+{
+    t = <STRING>    { return t.image; }
+|   t = <NUMBER>    { return t.image; }
+|   t = <IDENTIFIER>    { if(!symtable.contains(t.image))
+                            throw new ParseException(t.image + " undefined");
+                          return t.image; 
+                        }
+}
+
+String For() :    {Token t1, t2;
+                 String exp, body;   
+                }
+{
+    <FOR> 
+    t1 = <IDENTIFIER>
+    <EQUAL>
+    t2 = <NUMBER>
+    <COMMA>
+    exp = E()
+    <COLON>
+    body = Statements()
+    <ENDBLOCK>
+    {
+        String res =  "\nfor(double " + t1.image + " = " + t2.image + "; " 
+                        + t1.image + " <= " + exp + "; " + 
+                        t1.image + "++) {" + body + "\n}";
+        return res;
+    }
+}
+
+*/

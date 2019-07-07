@@ -1,0 +1,57 @@
+public class DartClass {
+	class Point {
+		public Integer x;
+		public Integer y;
+		public String z;
+		public Point(Integer x, Integer y, String z){
+			this.x = x;
+			this.y = y;
+			this.z = z;
+		}
+
+		public String toString(){
+			return "(x =" + this.x + ", y =" + this.y + ", z =" + this.z + ")";
+		}
+	}
+
+	public static void main(String[] args){
+				Integer x = null, h = null, t = null;
+
+		x = h == null ? 5 : h;
+
+		Integer y = t  == null ?5 : t;
+
+		Integer z;
+		if(z == null){
+			z = 5;
+		}
+
+		Point p2  = null, p4 = null ;
+		Point p1  = p2 == null ? null : p2;
+		Point p3 = new Point(1, 2, "hello");
+		p4 = new Point(1, 2, "hello");
+
+		Integer j= p3.x ;
+
+		String s1 = null;
+
+		String s2 = "hello";
+
+		String s3 = null, s4 = "bye", s5 = null;
+
+		s5 = s3 == null ? "hi" : s3;
+
+		String s6;
+		if(s6 == null){
+			s6 = "hi";
+		}
+
+		String s7= p3.toString();
+
+		System.out.println("hello");
+		System.out.println(5);
+		System.out.println(x);
+		System.out.println(p3.x );
+
+	}
+}

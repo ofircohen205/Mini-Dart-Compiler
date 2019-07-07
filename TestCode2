@@ -1,0 +1,38 @@
+define Point as {
+    int x, y;
+};
+
+
+int x;  // default is null
+print(x);   // null
+x = 9;      // simple assignment
+string s;   // default is null
+print(s);   // null
+s = "hello";    // simple assignment
+
+Point p1;   // default is null
+p1 = (1, 2);    // using constructor
+print(p1);      // default toString - (x = 1, y = 2)
+string s1 = p1; // default toString
+
+//----------------------------//
+int y;
+int z1 = y ?? 1;    // z1 is 1
+int z2 = z1 ?? 5;   // z2 is 0
+Point p2;
+string s2 = p2 ?? "no value";   // s2 is no value
+p2 = (3, 4);
+s2 = p2 ?? "no value";          // s2 is (x = 3, y = 4)
+
+//---------------------------//
+Point p3;
+
+//---------------------------//
+Point p4;
+p4 ??= (5, 6);
+print(p4);      // (x = 5, y = 6)
+p4 ??= (8, 9);
+print(p4);      // (x = 5, y = 6)
+int b;
+b ??= 3;    // b is 3
+b ??= 4;    // b is 3

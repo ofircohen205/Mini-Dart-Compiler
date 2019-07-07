@@ -1,0 +1,25 @@
+define point as {
+    int x, y;
+    string z;
+};
+int x, h, t;
+x = h ?? 5;
+int y = t ?? 5;
+int z ??= y;
+point p2, p4;
+point p1 ??= p2;
+point p3 = (1, 2, "hello");
+p4 = (1,2,"hello");
+int j = p3.x;
+string s1;
+string s2 = "hello";
+string s3,s4 = "bye",s5;
+s5 = s3 ?? "hi";
+string s6 ??= s5;
+string s7 = p3;
+
+print("hello");
+print(5);
+print(x);
+print(p3.x);
+

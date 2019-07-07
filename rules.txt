@@ -1,0 +1,60 @@
+Program -> Statement Statements <EOF>
+Statements -> Statement Statements
+
+Statement -> Declare | DefObj | Assign | Print
+
+Declare -> DecInt | DecStr | DecObj <SEMI_COLON>
+DecInt -> <DEC_INT> <IDENTIFIER> DecIntAssign MoreIdentifierInt
+DecStr -> <DEC_STRING> <IDENTIFIER> DecStringAssign MoreIdentifierString
+DecObj -> <IDENTIFIER> <IDENTIFIER> DecObjAssign MoreIdentifierObj
+
+DecIntAssign -> OpAssign ValueInt | {}
+DecStringAssign -> OpAssign ValueString | {}
+DecObjAssign -> OpAssign ValueObj | {}
+
+MoreIdentifierInt -> <COMMA> <IDENTIFIER> MoreIdentifierInt() | {}
+MoreIdentifierString -> <COMMA> <IDENTIFIER> MoreIdentifierString() | {}
+MoreIdentifierObj -> <COMMA> <IDENTIFIER> MoreIdentifierObj() | {}
+
+
+ValueInt -> <NUM> | <IDENTIFIER>
+ValueString -> <STRING> | <IDENTIFIER>
+ValueObj -> <IDENTIFIER> | <LP> ValueInt MoreIdentifierInt | ValueString MoreIdentifierString |  <RP>
+
+
+DefObj -> <DEFINE> <IDENTIFIER> <AS> <LC> ClassAttr <RC> <SEMI_COLON>
+
+ClassAttr -> Attr Attrs
+Attr -> Type <IDENTIFIER> MoreIdentifier <SEMI_COLON>
+Attrs -> Attr Attrs | {}
+
+
+Print -> <PRINT> <LP> Value <RP> <SEMI_COLON>
+
+Assign -> <IDENTIFIER> OpAssign AssignRight
+
+
+
+
+
+
+
+
+
+
+Assign -> <IDENTIFIER> ( ValueObj | {} ) AssignRight <SEMI_COLON>
+
+AssignRight -> EqOperators (RegAssign | ObjAssign)
+
+RegAssign -> Value
+ObjAssign -> <LP> Value MoreValues <RP>
+
+
+
+
+
+InnerDeclare -> Left Right <SEMI_COLON>
+
+Left -> <IDENTIFIER> Right MoreIdentifier
+Right -> EqOperators (RegRight | ObjRight) | {}
+
